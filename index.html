@@ -6,11 +6,12 @@
     <title>Dosanko Midnight App</title>
     <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
-    <!-- Firebase SDK (互換モード) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; overflow: hidden; background: #f0f0f0; }
+        /* 全体の設定 */
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; overflow: hidden; background: #f0f0f0; height: 100dvh; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
 
         /* 右上のメニューボタン */
@@ -21,39 +22,45 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.2); cursor: pointer; font-size: 24px;
         }
 
-        /* サイドパネル */
+        /* サイドパネル（スクロール対応） */
         .side-menu {
-            position: absolute; top: 0; right: -310px; width: 280px; height: 100%;
+            position: absolute; top: 0; right: -310px; width: 280px; 
+            height: 100dvh; /* 画面の高さぴったりに固定 */
             background: rgba(255, 255, 255, 0.98); z-index: 90;
-            transition: 0.3s; padding: 70px 10px 20px;
+            transition: 0.3s; 
+            padding: 70px 15px 100px; /* 下部に大きな余白を確保 */
             box-shadow: -2px 0 10px rgba(0,0,0,0.1);
-            display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 10px; 
+            overflow-y: auto; /* 縦スクロールを有効にする */
+            -webkit-overflow-scrolling: touch; /* iOSでのスクロールを滑らかに */
         }
         .side-menu.open { right: 0; }
 
+        /* UIパーツ */
         .btn-group { display: flex; gap: 4px; }
         button {
             flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px;
             background: white; font-size: 13px; font-weight: bold; cursor: pointer;
+            min-height: 44px; /* タップしやすい高さ */
         }
         button.active { background: #ff4444 !important; color: white !important; }
         
-        .section-title { font-size: 11px; color: #888; margin-top: 10px; font-weight: bold; text-transform: uppercase; }
+        .section-title { font-size: 11px; color: #888; margin-top: 15px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         
         /* ルートリスト */
         .route-item { 
             display: flex; align-items: center; gap: 8px;
-            padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; background: #fff; border-radius: 4px; margin-bottom: 4px;
+            padding: 12px 5px; border-bottom: 1px solid #eee; font-size: 14px;
         }
-        .fav-btn { font-size: 20px; color: #ccc; cursor: pointer; border:none; background:none; padding:0; }
+        .fav-btn { font-size: 22px; color: #ccc; cursor: pointer; border:none; background:none; padding:0; flex-shrink: 0; }
         .fav-btn.active { color: #fbc02d; }
-        .route-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .del-btn { color: #ff5252; font-size: 18px; border:none; background:none; cursor:pointer; padding:5px; }
+        .route-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #333; }
+        .del-btn { color: #ff5252; font-size: 18px; border:none; background:none; cursor:pointer; padding:5px; flex-shrink: 0; }
 
         /* 左下のやり直しパネル */
         .undo-panel {
             position: absolute; bottom: 30px; left: 15px; z-index: 80;
-            display: none; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: none; background: white; padding: 8px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
     </style>
 </head>
@@ -68,24 +75,26 @@
         <button id="autoModeBtn" onclick="toggleMode('auto')">自動検索</button>
     </div>
     <button id="saveBtn" onclick="saveToCloud()" style="background: #e3f2fd;">クラウドに保存・全員に共有</button>
-    <button onclick="clearCurrent()" style="font-weight: normal; font-size: 11px;">表示中のルートをリセット</button>
+    <button onclick="clearCurrent()" style="font-weight: normal; font-size: 11px; color: #666;">表示中のルートをリセット</button>
 
     <div class="section-title">みんなのルート</div>
     <div id="route-list">読み込み中...</div>
 
     <div class="section-title">設定</div>
     <button onclick="toggleTracking()" id="trackBtn">追従モード: OFF</button>
-    <button onclick="requestLocation()">現在地を表示</button>
+    <button onclick="requestLocation()">現在地を再表示</button>
+    <button onclick="openGoogleMaps()" style="font-weight: normal;">Googleマップで開く</button>
+    <button onclick="fullReset()" style="color: #ff5252; font-size: 11px; margin-top: 20px;">アプリを初期化(全消去)</button>
 </div>
 
 <div id="undo-panel" class="undo-panel">
-    <button onclick="undoLastAction()">↩ 1つ戻す (やり直し)</button>
+    <button onclick="undoLastAction()" style="background: #333; color: white; border: none;">↩ 1つ戻す (やり直し)</button>
 </div>
 
 <div id="map"></div>
 
 <script>
-    // --- Firebase設定（提供情報を反映） ---
+    // --- Firebase設定 ---
     const firebaseConfig = {
         apiKey: "AIzaSyCM1JORf6ntrSjgD8_Scx1aogVmmjoMmYk",
         authDomain: "dosanko-midnight-app.firebaseapp.com",
@@ -94,14 +103,12 @@
         messagingSenderId: "740298034300",
         appId: "1:740298034300:web:05ea779fddaf7fab480df9",
         measurementId: "G-0B0NF4EBLG",
-        // databaseURLは通常この形式になります。Firebase画面で確認してください。
         databaseURL: "https://dosanko-midnight-app-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 削除権限のためのユーザーID（スマホごとに保存）
     if(!localStorage.getItem('dosanko_user_id')) {
         localStorage.setItem('dosanko_user_id', 'u_' + Math.random().toString(36).substr(2, 9));
     }
@@ -131,8 +138,8 @@
         map.addSource('user-pos', { type: 'geojson', data: { type: 'Point', coordinates: [] } });
         map.addLayer({ id: 'user-area', type: 'circle', source: 'user-pos', paint: { 'circle-radius': 15, 'circle-color': '#007bff', 'circle-opacity': 0.4 } });
 
-        syncCloudRoutes(); // クラウドからルートを読み込み
-        requestLocation(); // 初期位置取得
+        syncCloudRoutes();
+        requestLocation();
     });
 
     // --- やり直し機能 ---
@@ -160,7 +167,7 @@
             creator: MY_ID,
             timestamp: Date.now()
         }).then(() => {
-            alert("クラウドに保存しました！みんなのリストに表示されます。");
+            alert("クラウドに保存しました！");
             clearCurrent();
         });
     }
@@ -177,8 +184,12 @@
                 routes.push({ id, ...data[id], isFav: favs.includes(id) });
             }
 
-            // お気に入り順、次に新しい順
             routes.sort((a, b) => (b.isFav - a.isFav) || (b.timestamp - a.timestamp));
+
+            if(routes.length === 0) {
+                list.innerHTML = '<div style="font-size:12px; color: #999; padding:10px;">共有ルートはありません</div>';
+                return;
+            }
 
             routes.forEach(r => {
                 const item = document.createElement('div');
@@ -194,7 +205,7 @@
     }
 
     function deleteRoute(id) {
-        if(confirm("このルートを削除しますか？（作成者のみ削除可能です）")) {
+        if(confirm("このルートを削除しますか？")) {
             db.ref('shared_routes/' + id).remove();
         }
     }
@@ -204,11 +215,11 @@
         if(favs.includes(id)) favs = favs.filter(f => f !== id);
         else favs.push(id);
         localStorage.setItem('dosanko_favs', JSON.stringify(favs));
-        // Firebaseのリスナーが自動的に再描画してくれます
     }
 
     function loadCloudRoute(id) {
         db.ref('shared_routes/' + id).once('value', (s) => {
+            if(!s.exists()) return alert("このルートは削除されています");
             currentRoute = s.val().coords;
             updateMapLine();
             map.flyTo({ center: currentRoute[0] });
@@ -216,7 +227,7 @@
         });
     }
 
-    // --- ルート描画・操作 ---
+    // --- ルート描画 ---
     function toggleMode(m) {
         mode = (mode === m) ? 'none' : m;
         document.getElementById('drawModeBtn').classList.toggle('active', mode === 'draw');
@@ -250,7 +261,7 @@
             const start = currentRoute[currentRoute.length - 1];
             const url = `https://router.project-osrm.org/route/v1/walking/${start[0]},${start[1]};${coords[0]},${coords[1]}?overview=full&geometries=geojson`;
             const res = await fetch(url).then(r => r.json());
-            if (res.routes[0]) {
+            if (res.routes && res.routes[0]) {
                 currentRoute = currentRoute.concat(res.routes[0].geometry.coordinates);
                 updateMapLine();
             }
@@ -266,16 +277,15 @@
     }
 
     function clearCurrent() { currentRoute = []; routeHistory = []; updateMapLine(); }
-    
     function toggleMenu() { document.getElementById('side-menu').classList.toggle('open'); }
 
-    // --- 現在地・追従 ---
+    // --- 現在地 ---
     function requestLocation() {
         navigator.geolocation.getCurrentPosition(pos => {
             const coords = [pos.coords.longitude, pos.coords.latitude];
             map.getSource('user-pos').setData({ type: 'Point', coordinates: coords });
             map.flyTo({ center: coords });
-        }, null, { enableHighAccuracy: false });
+        }, (err) => alert("位置情報の取得に失敗しました"), { enableHighAccuracy: false });
     }
 
     function startLocationWatcher() {
@@ -297,6 +307,13 @@
     function openGoogleMaps() {
         const c = map.getCenter();
         window.open(`https://www.google.com/maps/@${c.lat},${c.lng},15z`);
+    }
+
+    function fullReset() {
+        if(confirm("お気に入りや設定をすべて消去して初期化しますか？")) {
+            localStorage.clear();
+            location.reload();
+        }
     }
 </script>
 </body>
