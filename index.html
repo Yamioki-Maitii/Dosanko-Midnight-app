@@ -10,10 +10,10 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; height: 100vh; }
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; height: 100vh; background: #000; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
         
-        /* メニュー周り */
+        /* UIパーツ */
         .menu-trigger { position: absolute; top: 15px; right: 15px; z-index: 100; background: white; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3); cursor: pointer; font-size: 24px; }
         .side-menu { position: absolute; top: 0; right: -310px; width: 280px; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 90; transition: 0.3s; padding: 70px 15px 100px; box-shadow: -2px 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
         .side-menu.open { right: 0; }
@@ -22,11 +22,12 @@
         button.active { background: #ff4444 !important; color: white !important; }
         .section-title { font-size: 11px; color: #888; margin-top: 15px; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         
-        /* 地点ラベル用のスタイル */
-        .map-label { background: white; border: 2px solid #333; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 14px; white-space: nowrap; }
+        /* ラベルのデザイン */
+        .map-label { background: white; border: 2px solid #ff0000; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 14px; white-space: nowrap; cursor: pointer; color: black; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 
-        #status-msg { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 80; background: rgba(255,0,0,0.8); color: white; padding: 8px 20px; border-radius: 20px; font-size: 12px; display: none; }
+        #status-msg { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 80; background: rgba(255,0,0,0.9); color: white; padding: 8px 20px; border-radius: 20px; font-size: 12px; display: none; }
         .undo-panel { position: absolute; bottom: 30px; left: 15px; z-index: 80; display: none; }
+        .route-item { padding:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items: center; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -36,8 +37,10 @@
 
 <div id="side-menu" class="side-menu">
     <div class="section-title">表示設定</div>
-    <button onclick="changeMapStyle('osm')">標準地図</button>
-    <button onclick="changeMapStyle('sat')">航空写真</button>
+    <div style="display:flex; gap:4px;">
+        <button onclick="changeMapStyle('osm')">標準</button>
+        <button onclick="changeMapStyle('sat')">航空写真</button>
+    </div>
 
     <div class="section-title">ルート作成</div>
     <div style="display:flex; gap:4px;">
@@ -45,10 +48,10 @@
         <button id="markerModeBtn" onclick="toggleMode('marker')">地点登録</button>
     </div>
     <button onclick="saveToCloud()" style="background:#e3f2fd;">クラウドに保存・共有</button>
-    <button onclick="clearCurrent()" style="font-size:11px;">リセット</button>
+    <button onclick="clearCurrent()" style="font-size:11px;">表示をリセット</button>
 
-    <div class="section-title">共有ルート</div>
-    <div id="route-list"></div>
+    <div class="section-title">共有ルート（★お気に入り）</div>
+    <div id="route-list">読み込み中...</div>
 
     <div class="section-title">設定</div>
     <button onclick="toggleTracking()" id="trackBtn">追従モード: OFF</button>
@@ -56,7 +59,7 @@
 </div>
 
 <div id="undo-panel" class="undo-panel">
-    <button onclick="undoLastAction()" style="background:#333; color:white;">↩ 1つ戻す</button>
+    <button onclick="undoLastAction()" style="background:#333; color:white; border:none; padding:10px 20px; border-radius:8px;">↩ 1つ戻す</button>
 </div>
 
 <div id="map"></div>
@@ -78,11 +81,10 @@
     const MY_ID = localStorage.getItem('dosanko_user_id') || 'u_' + Math.random().toString(36).substr(2, 9);
     localStorage.setItem('dosanko_user_id', MY_ID);
 
-    // --- 地図設定 ---
-    const SAPPORO = [141.30, 43.10]; // 手稲・石狩付近
+    const SAPPORO = [141.3545, 43.0621];
     const styles = {
-        osm: { version: 8, sources: { 'osm': { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
-        sat: { version: 8, sources: { 'sat': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256 } }, layers: [{ id: 'sat', type: 'raster', source: 'sat' }] }
+        osm: { version: 8, sources: { 'osm': { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OSM' } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
+        sat: { version: 8, sources: { 'sat': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, attribution: 'Esri' } }, layers: [{ id: 'sat', type: 'raster', source: 'sat' }] }
     };
 
     const map = new maplibregl.Map({
@@ -92,18 +94,24 @@
     });
 
     let currentRoute = [];
-    let currentMarkers = []; // 地点情報の保存用
-    let routeHistory = [];
+    let currentMarkers = []; 
+    let markerInstances = []; // 表示中のマーカーを管理
     let mode = 'none';
     let isTracking = false;
 
-    map.on('load', () => {
-        map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [[0,0],[0,0]] } } });
-        map.addLayer({ id: 'route-layer', type: 'line', source: 'route', paint: { 'line-color': '#ff0000', 'line-width': 6 } });
-        syncCloudRoutes();
-    });
+    // 地図が読み込まれた時、またはスタイルが切り替わった時にレイヤーを再構築する
+    function setupMapLayers() {
+        if (!map.getSource('route')) {
+            map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: currentRoute.length > 1 ? currentRoute : [[0,0],[0,0]] } } });
+            map.addLayer({ id: 'route-layer', type: 'line', source: 'route', paint: { 'line-color': '#ff0000', 'line-width': 6, 'line-opacity': 0.8 } });
+        }
+        // マーカーを再表示
+        redrawMarkers();
+    }
 
-    // --- 機能切替 ---
+    map.on('style.load', setupMapLayers);
+
+    // --- モード切替 ---
     function toggleMode(m) {
         mode = (mode === m) ? 'none' : m;
         document.getElementById('drawModeBtn').classList.toggle('active', mode === 'draw');
@@ -115,18 +123,19 @@
 
     function changeMapStyle(s) { map.setStyle(styles[s]); toggleMenu(); }
 
-    // --- なぞり描きと「車道補正」 ---
-    map.on('mousemove', (e) => { if(mode==='draw') { currentRoute.push([e.lngLat.lng, e.lngLat.lat]); updateMapLine(); } });
-    map.on('touchmove', (e) => { if(mode==='draw') { currentRoute.push([e.lngLat.lng, e.lngLat.lat]); updateMapLine(); } });
+    // --- なぞり描き処理 ---
+    const handleMove = (e) => {
+        if (mode !== 'draw') return;
+        currentRoute.push([e.lngLat.lng, e.lngLat.lat]);
+        updateMapLine();
+    };
+    map.on('mousemove', handleMove);
+    map.on('touchmove', handleMove);
 
     async function finalizeDrawing() {
         if(mode !== 'draw' || currentRoute.length < 5) return;
-        routeHistory.push(JSON.stringify({route: currentRoute, markers: currentMarkers}));
-        
-        const status = document.getElementById('status-msg');
-        status.style.display = 'block';
+        document.getElementById('status-msg').style.display = 'block';
 
-        // 道路補正 (Drivingモード / 検索半径を50mに拡大)
         const step = Math.max(1, Math.floor(currentRoute.length / 90));
         const sampled = currentRoute.filter((_, i) => i % step === 0);
         const coordsStr = sampled.map(c => `${c[0]},${c[1]}`).join(';');
@@ -139,33 +148,51 @@
                 updateMapLine();
             }
         } catch (e) { console.error(e); }
-        status.style.display = 'none';
+        document.getElementById('status-msg').style.display = 'none';
     }
     map.on('mouseup', finalizeDrawing);
     map.on('touchend', finalizeDrawing);
 
-    // --- 地点登録 (マーカー) ---
+    // --- 地点登録・削除 ---
     map.on('click', (e) => {
         if (mode !== 'marker') return;
-        const label = prompt("地点の名前を入力 (例: 石狩ランプ)");
-        if (!label) return;
-        addLabelMarker(label, [e.lngLat.lng, e.lngLat.lat]);
+        const text = prompt("地点名を入力:");
+        if (!text) return;
+        const markerData = { text, lngLat: [e.lngLat.lng, e.lngLat.lat], id: Date.now() };
+        currentMarkers.push(markerData);
+        addMarkerToMap(markerData);
     });
 
-    function addLabelMarker(text, lngLat) {
+    function addMarkerToMap(data) {
         const el = document.createElement('div');
         el.className = 'map-label';
-        el.innerText = text;
-        const m = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
-        currentMarkers.push({ text, lngLat });
+        el.innerText = data.text;
+        
+        // ラベルクリックで削除（地点登録モード中のみ）
+        el.onclick = (e) => {
+            e.stopPropagation();
+            if (mode === 'marker' && confirm(`「${data.text}」を削除しますか？`)) {
+                currentMarkers = currentMarkers.filter(m => m.id !== data.id);
+                redrawMarkers();
+            }
+        };
+
+        const m = new maplibregl.Marker({ element: el }).setLngLat(data.lngLat).addTo(map);
+        markerInstances.push(m);
     }
 
-    // --- 保存と読み込み ---
+    function redrawMarkers() {
+        markerInstances.forEach(m => m.remove());
+        markerInstances = [];
+        currentMarkers.forEach(addMarkerToMap);
+    }
+
+    // --- クラウド連携 ---
     function saveToCloud() {
-        const name = prompt("保存名", "ルート " + new Date().toLocaleTimeString());
+        const name = prompt("ルートの保存名:");
         if(!name) return;
         db.ref('shared_routes').push({ name, coords: currentRoute, markers: currentMarkers, creator: MY_ID, timestamp: Date.now() });
-        alert("保存完了");
+        alert("クラウドに保存しました");
     }
 
     function syncCloudRoutes() {
@@ -173,33 +200,66 @@
             const list = document.getElementById('route-list');
             list.innerHTML = '';
             const data = snapshot.val();
-            for(let id in data) {
+            const favs = JSON.parse(localStorage.getItem('dosanko_favs') || '[]');
+            const routes = [];
+            for(let id in data) routes.push({ id, ...data[id], isFav: favs.includes(id) });
+            routes.sort((a,b) => (b.isFav - a.isFav) || (b.timestamp - a.timestamp));
+            
+            routes.forEach(r => {
                 const item = document.createElement('div');
-                item.style = "padding:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between;";
-                item.innerHTML = `<span onclick="loadCloudRoute('${id}')">${data[id].name}</span>
-                    ${data[id].creator===MY_ID ? `<button onclick="db.ref('shared_routes/${id}').remove()" style="padding:2px 5px;">削</button>`:''}`;
+                item.className = 'route-item';
+                item.innerHTML = `
+                    <span style="cursor:pointer; color:${r.isFav?'#fbc02d':'#ccc'}; font-size:20px;" onclick="toggleFav('${r.id}')">${r.isFav?'★':'☆'}</span>
+                    <span style="flex:1; margin-left:10px; font-weight:bold;" onclick="loadCloudRoute('${r.id}')">${r.name}</span>
+                    ${r.creator === MY_ID ? `<button onclick="db.ref('shared_routes/${r.id}').remove()" style="padding:2px 8px; border-color:red; color:red;">削</button>`:''}
+                `;
                 list.appendChild(item);
-            }
+            });
         });
+    }
+
+    function toggleFav(id) {
+        let favs = JSON.parse(localStorage.getItem('dosanko_favs') || '[]');
+        favs = favs.includes(id) ? favs.filter(f => f !== id) : [...favs, id];
+        localStorage.setItem('dosanko_favs', JSON.stringify(favs));
     }
 
     function loadCloudRoute(id) {
         db.ref('shared_routes/' + id).once('value', (s) => {
             const d = s.val();
             currentRoute = d.coords;
+            currentMarkers = d.markers || [];
             updateMapLine();
-            // 既存マーカー消去
-            document.querySelectorAll('.map-label').forEach(el => el.remove());
-            currentMarkers = [];
-            if(d.markers) d.markers.forEach(m => addLabelMarker(m.text, m.lngLat));
+            redrawMarkers();
             map.flyTo({ center: currentRoute[0] });
             toggleMenu();
         });
     }
 
-    function updateMapLine() { map.getSource('route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: currentRoute.length>1?currentRoute:[[0,0],[0,0]] } }); }
-    function clearCurrent() { currentRoute = []; currentMarkers = []; updateMapLine(); document.querySelectorAll('.map-label').forEach(el => el.remove()); }
+    function updateMapLine() {
+        if (map.getSource('route')) {
+            map.getSource('route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: currentRoute.length > 1 ? currentRoute : [[0,0],[0,0]] } });
+        }
+    }
+
+    function undoLastAction() {
+        if (currentRoute.length > 10) {
+            currentRoute.splice(-10); // 10点分戻す
+            updateMapLine();
+        }
+    }
+
+    function clearCurrent() {
+        currentRoute = [];
+        currentMarkers = [];
+        updateMapLine();
+        redrawMarkers();
+    }
+
     function toggleMenu() { document.getElementById('side-menu').classList.toggle('open'); }
+    function fullReset() { if(confirm("初期化しますか？") && confirm("本当に？")) { localStorage.clear(); location.reload(); } }
+
+    syncCloudRoutes();
 </script>
 </body>
 </html>
