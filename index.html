@@ -3,42 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My Navi App - Navigation</title>
+    <title>My Navi App</title>
     <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; overflow: hidden; background: #f0f0f0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .ui-panel {
-            position: absolute; top: 10px; left: 10px; z-index: 10;
-            background: rgba(255,255,255,0.9); padding: 10px; border-radius: 8px;
-            width: 200px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+
+        /* 三点リーダーボタン */
+        .menu-trigger {
+            position: absolute; top: 15px; right: 15px; z-index: 100;
+            background: white; width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); cursor: pointer; font-size: 24px;
         }
+
+        /* サイドパネルメニュー */
+        .side-menu {
+            position: absolute; top: 0; right: -280px; width: 250px; height: 100%;
+            background: rgba(255, 255, 255, 0.95); z-index: 90;
+            transition: 0.3s; padding: 80px 15px 20px;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; gap: 10px;
+            overflow-y: auto;
+        }
+        .side-menu.open { right: 0; }
+
+        /* ナビ情報パネル */
         .nav-info {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 10; background: rgba(0,0,0,0.8); color: white;
-            padding: 10px 20px; border-radius: 30px; font-size: 18px; font-weight: bold;
-            display: none; text-align: center; min-width: 150px;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 50; background: rgba(0,0,0,0.7); color: white;
+            padding: 12px 25px; border-radius: 30px; font-weight: bold;
+            display: none; text-align: center; pointer-events: none;
         }
-        button { width: 100%; margin: 4px 0; padding: 10px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; }
-        .active { background: #ff4444 !important; color: white; }
-        .tracking-on { background: #44ff44; }
-        #route-list { margin-top: 10px; max-height: 120px; overflow-y: auto; font-size: 12px; }
-        .route-item { border-bottom: 1px solid #eee; padding: 5px 0; display: flex; justify-content: space-between; align-items: center; }
+
+        button {
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;
+            background: white; font-size: 14px; font-weight: bold; cursor: pointer;
+        }
+        button.active { background: #ff4444; color: white; border-color: #ff4444; }
+        .section-title { font-size: 12px; color: #666; margin-top: 10px; font-weight: bold; }
+        
+        #route-list { margin-top: 5px; }
+        .route-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;
+        }
     </style>
 </head>
 <body>
 
-<div class="ui-panel">
+<!-- 三点リーダーボタン -->
+<div class="menu-trigger" onclick="toggleMenu()">⋮</div>
+
+<!-- サイドメニュー -->
+<div id="side-menu" class="side-menu">
+    <div class="section-title">ナビ・追従</div>
     <button id="trackBtn" onclick="toggleTracking()">追従モード: OFF</button>
+    
+    <div class="section-title">ルート作成</div>
+    <button id="drawModeBtn" onclick="toggleMode('draw')">なぞって作成</button>
     <button id="autoModeBtn" onclick="toggleMode('auto')">自動ルート作成</button>
-    <button onclick="saveCurrentRoute()">ルートを保存</button>
-    <button onclick="clearMap()" style="background:#eee;">クリア</button>
-    <div id="route-list"><strong>保存済みルート</strong></div>
+    <button onclick="saveCurrentRoute()" style="background: #e3f2fd;">今のルートを保存</button>
+    
+    <div class="section-title">外部連携・その他</div>
+    <button onclick="openGoogleMaps()">Googleマップで開く</button>
+    <button onclick="clearMap()" style="color: red;">全てクリア</button>
+
+    <div class="section-title">保存済みルート</div>
+    <div id="route-list"></div>
 </div>
 
+<!-- 距離表示 -->
 <div id="nav-info" class="nav-info">
-    あと <span id="distance">-</span>
+    目的地まで あと <span id="distance">-</span>
 </div>
 
 <div id="map"></div>
@@ -52,84 +90,92 @@
             layers: [{ id: 'osm-layer', type: 'raster', source: 'osm' }]
         },
         center: [139.767, 35.681],
-        zoom: 15
+        zoom: 14
     });
 
     let isTracking = false;
     let watchId = null;
-    let userMarker = new maplibregl.Marker({ color: '#007bff' });
     let currentRoute = [];
     let mode = 'none';
 
     map.on('load', () => {
+        // ルート表示用レイヤー
         map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
-        map.addLayer({ id: 'route-layer', type: 'line', source: 'route', paint: { 'line-color': '#ff4444', 'line-width': 6, 'line-opacity': 0.8 } });
+        map.addLayer({ id: 'route-layer', type: 'line', source: 'route', paint: { 'line-color': '#ff4444', 'line-width': 6, 'line-opacity': 0.7 } });
+
+        // 現在地（プライバシー配慮：円で表示）用のソース
+        map.addSource('user-pos', { type: 'geojson', data: { type: 'Point', coordinates: [] } });
+        map.addLayer({
+            id: 'user-area',
+            type: 'circle',
+            source: 'user-pos',
+            paint: {
+                'circle-radius': 30, // 誤差の範囲（ピクセル指定、実際はもっと曖昧）
+                'circle-color': '#007bff',
+                'circle-opacity': 0.3,
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#007bff'
+            }
+        });
         updateRouteList();
     });
 
-    // --- 追従モードの切り替え ---
+    // --- メニュー開閉 ---
+    function toggleMenu() {
+        document.getElementById('side-menu').classList.toggle('open');
+    }
+
+    // --- 追従モード（精度制限あり） ---
     function toggleTracking() {
         isTracking = !isTracking;
         const btn = document.getElementById('trackBtn');
-        const navInfo = document.getElementById('nav-info');
+        btn.classList.toggle('active', isTracking);
+        btn.innerText = `追従モード: ${isTracking ? 'ON' : 'OFF'}`;
+        document.getElementById('nav-info').style.display = isTracking ? 'block' : 'none';
 
         if (isTracking) {
-            btn.innerText = "追従モード: ON";
-            btn.classList.add('tracking-on');
-            navInfo.style.display = 'block';
-            startTracking();
+            // enableHighAccuracy: false でバッテリー消費と精度を抑える
+            watchId = navigator.geolocation.watchPosition(updatePosition, null, { enableHighAccuracy: false });
+            toggleMenu(); // メニューを閉じる
         } else {
-            btn.innerText = "追従モード: OFF";
-            btn.classList.remove('tracking-on');
-            navInfo.style.display = 'none';
-            stopTracking();
+            if (watchId) navigator.geolocation.clearWatch(watchId);
         }
     }
 
-    function startTracking() {
-        if (!navigator.geolocation) return alert("GPSが使えません");
+    function updatePosition(pos) {
+        const { latitude, longitude } = pos.coords;
+        const coords = [longitude, latitude];
+        
+        // あえて少しだけ座標をぼかす処理（0.0001度 ≒ 約10mのランダム誤差）
+        const fuzzyCoords = [
+            longitude + (Math.random() - 0.5) * 0.0002,
+            latitude + (Math.random() - 0.5) * 0.0002
+        ];
 
-        watchId = navigator.geolocation.watchPosition(pos => {
-            const { latitude, longitude } = pos.coords;
-            const userCoords = [longitude, latitude];
+        map.getSource('user-pos').setData({ type: 'Point', coordinates: fuzzyCoords });
+        if (isTracking) map.easeTo({ center: fuzzyCoords });
 
-            userMarker.setLngLat(userCoords).addTo(map);
-            
-            if (isTracking) {
-                map.easeTo({ center: userCoords, duration: 1000 });
-            }
-
-            // 目的地（ルートの終点）までの距離計算
-            if (currentRoute.length > 0) {
-                const destination = currentRoute[currentRoute.length - 1];
-                const dist = calculateDistance(longitude, latitude, destination[0], destination[1]);
-                document.getElementById('distance').innerText = dist;
-            }
-        }, err => console.error(err), { enableHighAccuracy: true });
+        if (currentRoute.length > 0) {
+            const dest = currentRoute[currentRoute.length - 1];
+            document.getElementById('distance').innerText = calculateDistance(longitude, latitude, dest[0], dest[1]);
+        }
     }
 
-    function stopTracking() {
-        if (watchId) navigator.geolocation.clearWatch(watchId);
-    }
-
-    // --- 距離計算 (ハバーサイン公式) ---
-    function calculateDistance(lon1, lat1, lon2, lat2) {
-        const R = 6371; // 地球の半径 km
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        const d = R * c;
-        return d > 1 ? d.toFixed(2) + " km" : (d * 1000).toFixed(0) + " m";
-    }
-
-    // --- ルート作成機能 (前回と同じ) ---
-    function toggleMode(newMode) {
-        mode = (mode === newMode) ? 'none' : newMode;
+    // --- モード切替 ---
+    function toggleMode(m) {
+        mode = (mode === m) ? 'none' : m;
+        document.getElementById('drawModeBtn').classList.toggle('active', mode === 'draw');
         document.getElementById('autoModeBtn').classList.toggle('active', mode === 'auto');
+        if (mode !== 'none') toggleMenu();
+        if (mode === 'draw') map.dragPan.disable(); else map.dragPan.enable();
     }
+
+    // --- ルート作成（なぞり & クリック） ---
+    map.on('mousemove', (e) => {
+        if (mode !== 'draw') return;
+        currentRoute.push([e.lngLat.lng, e.lngLat.lat]);
+        updateMapLine();
+    });
 
     map.on('click', async (e) => {
         if (mode !== 'auto') return;
@@ -150,9 +196,9 @@
         map.getSource('route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: currentRoute } });
     }
 
+    // --- 保存・読み込み ---
     function saveCurrentRoute() {
-        if (currentRoute.length === 0) return;
-        const name = prompt("ルート名", "保存ルート " + new Date().toLocaleTimeString());
+        const name = prompt("ルート名を入力", "マイルート " + new Date().toLocaleTimeString());
         if (!name) return;
         const saved = JSON.parse(localStorage.getItem('my_routes') || '[]');
         saved.push({ name, data: currentRoute });
@@ -162,28 +208,41 @@
 
     function updateRouteList() {
         const list = document.getElementById('route-list');
-        list.innerHTML = '<strong>保存済みルート</strong>';
+        list.innerHTML = '';
         JSON.parse(localStorage.getItem('my_routes') || '[]').forEach((r, i) => {
-            const div = document.createElement('div');
-            div.className = 'route-item';
-            div.innerHTML = `<span>${r.name}</span> <button onclick="loadRoute(${i})" style="width:40px; padding:2px;">表示</button>`;
-            list.appendChild(div);
+            const item = document.createElement('div');
+            item.className = 'route-item';
+            item.innerHTML = `<span>${r.name}</span><button onclick="loadRoute(${i})" style="width:50px; padding:5px;">表示</button>`;
+            list.appendChild(item);
         });
     }
 
-    function loadRoute(index) {
-        const saved = JSON.parse(localStorage.getItem('my_routes') || '[]');
-        currentRoute = saved[index].data;
+    function loadRoute(i) {
+        currentRoute = JSON.parse(localStorage.getItem('my_routes'))[i].data;
         updateMapLine();
-        map.flyTo({ center: currentRoute[0], zoom: 15 });
+        map.flyTo({ center: currentRoute[0] });
+        toggleMenu();
     }
 
     function clearMap() {
-        if(confirm("ルートをクリアしますか？")) {
-            currentRoute = [];
-            updateMapLine();
+        if (confirm("全てのデータをクリアしますか？")) {
+            localStorage.clear();
             location.reload();
         }
+    }
+
+    function calculateDistance(lon1, lat1, lon2, lat2) {
+        const R = 6371;
+        const dLat = (lat2-lat1)*Math.PI/180;
+        const dLon = (lon2-lon1)*Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return d > 1 ? d.toFixed(1)+"km" : (d*1000).toFixed(0)+"m";
+    }
+
+    function openGoogleMaps() {
+        const c = map.getCenter();
+        window.open(`https://www.google.com/maps/@${c.lat},${c.lng},15z`);
     }
 </script>
 </body>
